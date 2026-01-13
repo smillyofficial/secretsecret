@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows 12 Pro Max</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            background: #000;
+        }
+
+        .window-shadow {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.3); border-radius: 10px; }
+
+        .glass {
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+        }
+
+        .taskbar-dark { background: rgba(0, 0, 0, 0.65); }
+        .taskbar-light { background: rgba(255, 255, 255, 0.65); }
+
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .animate-window { animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        .window-instance {
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        
+        .active-dot {
+            width: 4px;
+            height: 4px;
+            background: #3b82f6;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 2px;
+        }
+
+        .window-maximized {
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: calc(100vh - 64px) !important;
+            border-radius: 0 !important;
+        }
+
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden">
+
+    <div id="desktop" class="h-screen w-screen relative bg-cover bg-center transition-all duration-700">
+        
+        <!-- Brightness Overlay -->
+        <div id="brightness-overlay" class="fixed inset-0 bg-black pointer-events-none z-[9999] opacity-0"></div>
+
+        <!-- Desktop Grid -->
+        <div id="desktop-icons" class="p-6 grid grid-flow-col grid-rows-[repeat(auto-fill,110px)] gap-2 w-fit h-full z-10"></div>
+
+        <!-- Windows Container -->
+        <div id="window-container" class="relative z-20"></div>
+
+        <!-- Custom Alert Modal -->
+        <div id="custom-alert" class="fixed inset-0 z-[10000] hidden items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div class="glass border border-white/20 p-8 rounded-[32px] text-center shadow-2xl max-w-sm animate-window">
+                <i data-lucide="lock" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                <h2 class="text-white font-black text-xl mb-2">Access Denied</h2>
+                <p class="text-white/60 text-sm mb-6">You aren't permitted to open this yet.</p>
+                <button onclick="closeAlert()" class="bg-white text-black px-6 py-2 rounded-xl font-bold hover:scale-105 transition-transform">Close</button>
+            </div>
+        </div>
+
+        <!-- Context Menu -->
+        <div id="context-menu" class="fixed hidden w-56 p-1.5 rounded-xl shadow-2xl border border-white/10 z-[5000] glass text-sm text-white">
+            <button onclick="createNewFolder()" class="w-full text-left p-2.5 hover:bg-white/10 rounded-lg flex items-center gap-3">
+                <i data-lucide="folder-plus" class="w-4 h-4"></i> New Folder
+            </button>
+            <div class="h-px bg-white/10 my-1"></div>
+            <button onclick="location.reload()" class="w-full text-left p-2.5 hover:bg-white/10 rounded-lg flex items-center gap-3">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Refresh
+            </button>
+            <button onclick="openApp('settings')" class="w-full text-left p-2.5 hover:bg-white/10 rounded-lg flex items-center gap-3">
+                <i data-lucide="palette" class="w-4 h-4"></i> Personalize
+            </button>
+        </div>
+
+        <!-- Start Menu -->
+        <div id="start-menu" class="fixed hidden bottom-20 left-1/2 -translate-x-1/2 w-[540px] rounded-[32px] p-8 z-[4000] border border-white/10 shadow-2xl glass animate-window text-white">
+            <div class="relative mb-6">
+                <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 opacity-30 w-4 h-4"></i>
+                <input class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-blue-500/50 text-white" placeholder="Search apps...">
+            </div>
+            <h3 class="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Pinned Apps</h3>
+            <div id="start-grid" class="grid grid-cols-4 gap-y-8"></div>
+        </div>
+
+        <!-- Control Center -->
+        <div id="control-center" class="fixed hidden bottom-20 right-4 w-[340px] rounded-[32px] p-6 z-[4000] border border-white/10 shadow-2xl glass animate-window text-white">
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="p-4 bg-blue-600 rounded-2xl flex flex-col items-center gap-2 text-white cursor-pointer hover:bg-blue-500">
+                    <i data-lucide="wifi"></i><span class="text-[10px] font-bold uppercase">WiFi</span>
+                </div>
+                <div class="p-4 bg-white/10 rounded-2xl flex flex-col items-center gap-2 cursor-pointer hover:bg-white/20">
+                    <i data-lucide="bluetooth" class="opacity-40"></i><span class="text-[10px] font-bold opacity-40 uppercase">Bluetooth</span>
+                </div>
+            </div>
+            <div class="space-y-6">
+                <div class="space-y-2">
+                    <div class="flex justify-between text-[10px] font-bold opacity-40 uppercase"><span>Brightness</span></div>
+                    <input type="range" id="brightness-slider" min="0" max="80" step="1" class="w-full accent-blue-500 bg-white/10 rounded-lg appearance-none h-1.5" oninput="updateBrightness(this.value)">
+                </div>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-[10px] font-bold opacity-40 uppercase"><span>Volume</span></div>
+                    <input type="range" id="volume-slider" min="0" max="100" step="1" class="w-full accent-blue-500 bg-white/10 rounded-lg appearance-none h-1.5" oninput="updateVolume(this.value)">
+                </div>
+            </div>
+        </div>
+
+        <!-- Taskbar -->
+        <div class="fixed bottom-4 left-0 w-full flex justify-center z-[5000]">
+            <div id="taskbar" class="flex items-center gap-1 p-1.5 px-3 rounded-2xl border border-white/10 shadow-2xl glass transition-colors duration-500">
+                <button onclick="toggleStart(event)" class="w-11 h-11 rounded-xl hover:bg-white/20 flex items-center justify-center transition active:scale-90">
+                    <div class="grid grid-cols-2 gap-0.5 pointer-events-none">
+                        <div class="w-2.5 h-2.5 bg-sky-400 rounded-sm"></div>
+                        <div class="w-2.5 h-2.5 bg-blue-500 rounded-sm"></div>
+                        <div class="w-2.5 h-2.5 bg-indigo-400 rounded-sm"></div>
+                        <div class="w-2.5 h-2.5 bg-violet-600 rounded-sm"></div>
+                    </div>
+                </button>
+                <div class="w-px h-6 bg-white/10 mx-1"></div>
+                <div id="taskbar-apps" class="flex items-center gap-1"></div>
+                <div class="w-px h-6 bg-white/10 mx-1"></div>
+                <div onclick="toggleControlCenter(event)" class="flex flex-col items-center justify-center px-3 h-11 hover:bg-white/10 rounded-xl cursor-pointer">
+                    <span id="taskbar-time" class="text-[11px] font-bold">00:00</span>
+                    <span id="taskbar-date" class="text-[9px] opacity-60 font-medium uppercase tracking-tighter">JAN 01</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core State ---
+        let state = {
+            theme: localStorage.getItem('theme') || 'dark',
+            wallpaper: localStorage.getItem('wallpaper') || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400',
+            brightness: parseInt(localStorage.getItem('brightness')) || 0,
+            volume: parseInt(localStorage.getItem('volume')) || 80,
+            folders: JSON.parse(localStorage.getItem('folders')) || [],
+            openWindows: [],
+            activeWindow: null,
+            installedApps: ['edge', 'explorer', 'settings', 'notepad', 'paint']
+        };
+
+        const appIcons = {
+            edge: { icon: 'globe', color: 'text-sky-400' },
+            explorer: { icon: 'folder', color: 'text-amber-400' },
+            settings: { icon: 'settings', color: 'text-zinc-400' },
+            notepad: { icon: 'file-text', color: 'text-blue-400' },
+            paint: { icon: 'palette', color: 'text-pink-400' }
+        };
+
+        const systemFiles = [
+            { name: "Components of W12", restricted: true },
+            { name: "Kernel Pro Max", restricted: true },
+            { name: "UI Engine", restricted: true },
+            { name: "Cloud Sync", restricted: true }
+        ];
+
+        // --- Initialization ---
+        function init() {
+            applyTheme();
+            renderDesktop();
+            renderTaskbar();
+            updateClock();
+            setInterval(updateClock, 1000);
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#start-menu') && !e.target.closest('button')) hideStart();
+                if (!e.target.closest('#control-center') && !e.target.closest('#taskbar')) hideControlCenter();
+                hideContextMenu();
+            });
+
+            document.getElementById('desktop').addEventListener('contextmenu', (e) => {
+                if (e.target.id === 'desktop' || e.target.id === 'desktop-icons') {
+                    e.preventDefault();
+                    showContextMenu(e.pageX, e.pageY);
+                }
+            });
+
+            lucide.createIcons();
+        }
+
+        function saveState() {
+            localStorage.setItem('theme', state.theme);
+            localStorage.setItem('wallpaper', state.wallpaper);
+            localStorage.setItem('brightness', state.brightness);
+            localStorage.setItem('volume', state.volume);
+            localStorage.setItem('folders', JSON.stringify(state.folders));
+        }
+
+        function applyTheme() {
+            const isDark = state.theme === 'dark';
+            const desktop = document.getElementById('desktop');
+            const taskbar = document.getElementById('taskbar');
+            
+            desktop.style.backgroundImage = `url(${state.wallpaper})`;
+            desktop.classList.toggle('text-white', isDark);
+            desktop.classList.toggle('text-slate-900', !isDark);
+            
+            taskbar.className = `flex items-center gap-1 p-1.5 px-3 rounded-2xl border border-white/10 shadow-2xl glass transition-colors duration-500 ${isDark ? 'taskbar-dark text-white' : 'taskbar-light text-black'}`;
+            
+            document.getElementById('brightness-overlay').style.opacity = state.brightness / 100;
+            document.getElementById('brightness-slider').value = state.brightness;
+            document.getElementById('volume-slider').value = state.volume;
+        }
+
+        function renderDesktop() {
+            const grid = document.getElementById('desktop-icons');
+            let html = state.installedApps.map(app => `
+                <div ondblclick="openApp('${app}')" class="w-24 p-3 flex flex-col items-center gap-2 rounded-xl hover:bg-white/10 cursor-pointer group">
+                    <i data-lucide="${appIcons[app].icon}" class="w-10 h-10 ${appIcons[app].color} drop-shadow-lg pointer-events-none"></i>
+                    <span class="text-[10px] font-bold text-center text-white drop-shadow-md uppercase tracking-tight pointer-events-none">${app}</span>
+                </div>
+            `).join('');
+            
+            html += state.folders.map(f => `
+                <div class="w-24 p-3 flex flex-col items-center gap-2 rounded-xl hover:bg-white/10 cursor-pointer group">
+                    <i data-lucide="folder" class="w-10 h-10 text-amber-400 drop-shadow-lg pointer-events-none"></i>
+                    <span class="text-[10px] font-bold text-center text-white drop-shadow-md uppercase tracking-tight pointer-events-none">${f.name}</span>
+                </div>
+            `).join('');
+
+            grid.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        // --- App Management ---
+        window.openApp = function(id) {
+            hideStart();
+            if (state.openWindows.includes(id)) {
+                focusWindow(id);
+                return;
+            }
+            state.openWindows.push(id);
+            renderWindow(id);
+            focusWindow(id);
+            renderTaskbar();
+            
+            if (id === 'paint') initPaint();
+        };
+
+        window.closeWindow = function(id) {
+            state.openWindows = state.openWindows.filter(w => w !== id);
+            const el = document.getElementById(`win-${id}`);
+            if (el) el.remove();
+            if (state.activeWindow === id) state.activeWindow = null;
+            renderTaskbar();
+        };
+
+        window.toggleMaximize = function(id) {
+            const el = document.getElementById(`win-${id}`);
+            el.classList.toggle('window-maximized');
+            if (id === 'paint') resizePaintCanvas();
+        };
+
+        window.minimizeWindow = function(id) {
+            const el = document.getElementById(`win-${id}`);
+            el.style.transform = "scale(0.8) translateY(100px)";
+            el.style.opacity = "0";
+            setTimeout(() => { el.style.display = 'none'; }, 200);
+            state.activeWindow = null;
+            renderTaskbar();
+        };
+
+        window.focusWindow = function(id) {
+            const el = document.getElementById(`win-${id}`);
+            if (!el) return;
+            if (el.style.display === 'none') {
+                el.style.display = 'flex';
+                setTimeout(() => {
+                    el.style.transform = "scale(1) translateY(0)";
+                    el.style.opacity = "1";
+                }, 10);
+            }
+            state.activeWindow = id;
+            document.querySelectorAll('.window-instance').forEach(win => {
+                const isTarget = win.id === `win-${id}`;
+                win.style.zIndex = isTarget ? 100 : 50;
+                win.classList.toggle('opacity-100', isTarget);
+                win.classList.toggle('opacity-90', !isTarget);
+            });
+            renderTaskbar();
+        };
+
+        window.showDenied = function() {
+            const alert = document.getElementById('custom-alert');
+            alert.classList.remove('hidden');
+            alert.classList.add('flex');
+        };
+
+        window.closeAlert = function() {
+            const alert = document.getElementById('custom-alert');
+            alert.classList.add('hidden');
+            alert.classList.remove('flex');
+        };
+
+        function renderWindow(id) {
+            const container = document.getElementById('window-container');
+            const win = document.createElement('div');
+            win.id = `win-${id}`;
+            win.className = `window-instance fixed top-16 left-32 w-[900px] h-[600px] rounded-2xl overflow-hidden shadow-2xl border border-white/10 animate-window flex flex-col`;
+            
+            const isDark = state.theme === 'dark';
+            const bgColor = isDark ? 'bg-[#09090b]' : 'bg-white';
+            const textColor = isDark ? 'text-white' : 'text-black';
+            const headColor = isDark ? 'bg-[#18181b]' : 'bg-zinc-100';
+
+            win.innerHTML = `
+                <div class="h-12 ${headColor} ${textColor} flex items-center justify-between px-4 border-b border-black/5 cursor-move" onmousedown="focusWindow('${id}')">
+                    <div class="flex items-center gap-2 pointer-events-none">
+                        <i data-lucide="${appIcons[id].icon}" class="w-4 h-4 ${appIcons[id].color}"></i>
+                        <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">${id}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="minimizeWindow('${id}')" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+                            <i data-lucide="minus" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="toggleMaximize('${id}')" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10">
+                            <i data-lucide="square" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button onclick="closeWindow('${id}')" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500 hover:text-white transition-colors">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 ${bgColor} overflow-hidden relative">
+                    ${renderAppContent(id)}
+                </div>
+            `;
+            container.appendChild(win);
+            lucide.createIcons();
+            makeDraggable(win);
+        }
+
+        function renderAppContent(id) {
+            const isDark = state.theme === 'dark';
+            const themeClass = isDark ? 'text-white' : 'text-black';
+            
+            if (id === 'settings') {
+                return `
+                    <div class="flex h-full ${themeClass}">
+                        <div class="w-56 border-r border-white/5 p-4 space-y-1 bg-black/5">
+                            <div class="p-3 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-lg">Personalization</div>
+                        </div>
+                        <div class="p-10 flex-1 overflow-auto">
+                            <h2 class="text-3xl font-black mb-8">Settings</h2>
+                            <div class="space-y-10">
+                                <div>
+                                    <label class="text-[10px] font-black uppercase opacity-40 block mb-4 tracking-widest">Appearance</label>
+                                    <div class="flex gap-4">
+                                        <button onclick="updateTheme('dark')" class="flex-1 p-6 border-2 ${state.theme === 'dark' ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'} rounded-2xl">Dark</button>
+                                        <button onclick="updateTheme('light')" class="flex-1 p-6 border-2 ${state.theme === 'light' ? 'border-blue-500 bg-blue-500/10' : 'border-white/5'} rounded-2xl">Light</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            if (id === 'explorer') {
+                return `
+                    <div class="p-8 grid grid-cols-5 gap-6 ${themeClass}">
+                        ${systemFiles.map(f => `
+                            <div ondblclick="showDenied()" class="flex flex-col items-center gap-3 p-4 hover:bg-white/5 rounded-2xl cursor-default group">
+                                <i data-lucide="folder-lock" class="w-12 h-12 text-blue-500 fill-blue-500/20 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[10px] font-bold text-center uppercase tracking-tight">${f.name}</span>
+                            </div>
+                        `).join('')}
+                        ${state.folders.map(f => `
+                            <div class="flex flex-col items-center gap-3 p-4 hover:bg-white/5 rounded-2xl cursor-default group">
+                                <i data-lucide="folder" class="w-12 h-12 text-amber-400 fill-amber-400/20 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[10px] font-bold text-center uppercase tracking-tight">${f.name}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            if (id === 'paint') {
+                return `
+                    <div class="flex flex-col h-full bg-zinc-200">
+                        <div class="h-14 bg-zinc-100 border-b border-zinc-300 flex items-center px-4 gap-6">
+                            <div class="flex items-center gap-2">
+                                <input type="color" id="paint-color" class="w-8 h-8 rounded cursor-pointer border-none bg-transparent" value="#000000">
+                                <span class="text-[10px] font-bold text-zinc-500 uppercase">Color</span>
+                            </div>
+                            <div class="h-6 w-px bg-zinc-300"></div>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="paint-size" min="1" max="50" value="5" class="accent-blue-500 h-1.5 w-24">
+                                <span id="paint-size-label" class="text-[10px] font-bold text-zinc-500 w-4">5</span>
+                            </div>
+                            <div class="h-6 w-px bg-zinc-300"></div>
+                            <button onclick="clearPaint()" class="flex items-center gap-2 text-zinc-600 hover:text-red-500 transition-colors">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                <span class="text-[10px] font-bold uppercase">Clear</span>
+                            </button>
+                            <button onclick="downloadPaint()" class="ml-auto flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                <span class="text-[10px] font-bold uppercase">Save</span>
+                            </button>
+                        </div>
+                        <div id="paint-container" class="flex-1 bg-white overflow-hidden m-4 rounded-lg shadow-inner border border-zinc-300">
+                            <canvas id="paint-canvas"></canvas>
+                        </div>
+                    </div>
+                `;
+            }
+            if (id === 'edge') return `<iframe src="https://www.google.com/webhp?igu=1" class="w-full h-full border-none"></iframe>`;
+            return `<textarea class="w-full h-full p-10 outline-none resize-none font-mono text-sm ${isDark ? 'bg-transparent text-white' : 'bg-transparent text-black'}" placeholder="Type something here...">Welcome to Windows 12 Pro Max.</textarea>`;
+        }
+
+        // --- Paint Application Logic ---
+        let paintCtx, isDrawing = false;
+        function initPaint() {
+            const canvas = document.getElementById('paint-canvas');
+            if (!canvas) return;
+            paintCtx = canvas.getContext('2d');
+            resizePaintCanvas();
+            
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+
+            document.getElementById('paint-size').addEventListener('input', (e) => {
+                document.getElementById('paint-size-label').innerText = e.target.value;
+            });
+            
+            lucide.createIcons();
+        }
+
+        function resizePaintCanvas() {
+            const canvas = document.getElementById('paint-canvas');
+            const container = document.getElementById('paint-container');
+            if (!canvas || !container) return;
+            
+            // Save current content
+            const temp = paintCtx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            // Fill white background
+            paintCtx.fillStyle = '#ffffff';
+            paintCtx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Restore content
+            paintCtx.putImageData(temp, 0, 0);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            draw(e);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            paintCtx.beginPath();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const canvas = document.getElementById('paint-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            paintCtx.lineWidth = document.getElementById('paint-size').value;
+            paintCtx.lineCap = 'round';
+            paintCtx.strokeStyle = document.getElementById('paint-color').value;
+
+            paintCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            paintCtx.stroke();
+            paintCtx.beginPath();
+            paintCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        }
+
+        window.clearPaint = function() {
+            const canvas = document.getElementById('paint-canvas');
+            paintCtx.fillStyle = '#ffffff';
+            paintCtx.fillRect(0, 0, canvas.width, canvas.height);
+        };
+
+        window.downloadPaint = function() {
+            const canvas = document.getElementById('paint-canvas');
+            const link = document.createElement('a');
+            link.download = 'W12-Masterpiece.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        };
+
+        // --- System Functions ---
+        window.updateTheme = function(t) { 
+            state.theme = t; 
+            saveState(); 
+            applyTheme(); 
+            const open = [...state.openWindows];
+            open.forEach(id => {
+                const win = document.getElementById(`win-${id}`);
+                if (win) {
+                    const content = win.querySelector('.flex-1');
+                    content.innerHTML = renderAppContent(id);
+                    const header = win.querySelector('.h-12');
+                    header.className = `h-12 ${t === 'dark' ? 'bg-[#18181b] text-white' : 'bg-zinc-100 text-black'} flex items-center justify-between px-4 border-b border-black/5 cursor-move`;
+                    content.className = `flex-1 ${t === 'dark' ? 'bg-[#09090b]' : 'bg-white'} overflow-hidden relative`;
+                    if (id === 'paint') initPaint();
+                }
+            });
+            lucide.createIcons();
+        };
+
+        window.updateWallpaper = function(w) { state.wallpaper = w; saveState(); applyTheme(); updateTheme(state.theme); };
+        window.updateBrightness = function(v) { state.brightness = v; saveState(); applyTheme(); };
+        window.updateVolume = function(v) { state.volume = v; saveState(); };
+
+        function renderTaskbar() {
+            const container = document.getElementById('taskbar-apps');
+            container.innerHTML = state.openWindows.map(app => `
+                <button onclick="focusWindow('${app}')" class="relative w-11 h-11 rounded-xl flex items-center justify-center transition-all ${state.activeWindow === app ? 'bg-white/20' : 'hover:bg-white/10'}">
+                    <i data-lucide="${appIcons[app].icon}" class="w-5 h-5 ${appIcons[app].color}"></i>
+                    ${state.openWindows.includes(app) ? '<div class="active-dot"></div>' : ''}
+                </button>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        window.createNewFolder = function() {
+            const name = `New Folder (${state.folders.length + 1})`;
+            state.folders.push({ name, id: Date.now() });
+            saveState();
+            renderDesktop();
+            if (state.openWindows.includes('explorer')) {
+                const exp = document.getElementById('win-explorer').querySelector('.flex-1');
+                exp.innerHTML = renderAppContent('explorer');
+                lucide.createIcons();
+            }
+            hideContextMenu();
+        };
+
+        window.toggleStart = function(e) { e.stopPropagation(); document.getElementById('start-menu').classList.toggle('hidden'); renderStartGrid(); };
+        window.hideStart = function() { document.getElementById('start-menu').classList.add('hidden'); };
+        
+        function renderStartGrid() {
+            const grid = document.getElementById('start-grid');
+            grid.innerHTML = state.installedApps.map(app => `
+                <div onclick="openApp('${app}')" class="flex flex-col items-center gap-2 cursor-pointer hover:bg-white/5 p-4 rounded-2xl transition-all active:scale-95">
+                    <i data-lucide="${appIcons[app].icon}" class="w-6 h-6 ${appIcons[app].color}"></i>
+                    <span class="text-[9px] font-bold opacity-60 uppercase">${app}</span>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        window.toggleControlCenter = function(e) { e.stopPropagation(); document.getElementById('control-center').classList.toggle('hidden'); };
+        window.hideControlCenter = function() { document.getElementById('control-center').classList.add('hidden'); };
+
+        function showContextMenu(x, y) {
+            const menu = document.getElementById('context-menu');
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.classList.remove('hidden');
+        }
+
+        function hideContextMenu() { document.getElementById('context-menu').classList.add('hidden'); }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('taskbar-time').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('taskbar-date').innerText = now.toLocaleDateString([], { month: 'short', day: 'numeric' }).toUpperCase();
+        }
+
+        function makeDraggable(el) {
+            const header = el.querySelector('.h-12');
+            let x = 0, y = 0, nx = 0, ny = 0;
+            header.onmousedown = (e) => {
+                if (el.classList.contains('window-maximized')) return;
+                e.preventDefault();
+                x = e.clientX;
+                y = e.clientY;
+                document.onmousemove = (e) => {
+                    nx = x - e.clientX;
+                    ny = y - e.clientY;
+                    x = e.clientX;
+                    y = e.clientY;
+                    el.style.top = (el.offsetTop - ny) + "px";
+                    el.style.left = (el.offsetLeft - nx) + "px";
+                };
+                document.onmouseup = () => {
+                    document.onmousemove = null;
+                    document.onmouseup = null;
+                };
+            };
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
